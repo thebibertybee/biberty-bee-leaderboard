@@ -1,1 +1,0 @@
-Upload profile pictures here, named after the Instagram handle (e.g., thebibertybee.png). In the Google Sheets Accounts tab, add a column named Profile Picture URL and place avatars/thebibertybee.png for that account. Use .png, .jpg or .webp image files.
