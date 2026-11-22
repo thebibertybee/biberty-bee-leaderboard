@@ -1,0 +1,2 @@
+Biberty Analytics Version 25 — offline demo with fictional analytics. Fixes: medal badges display as scalloped icons rather than rectangular pills; Growth Charts account selector checkboxes and add-account controls are sized responsively and stay inside their panel. Unzip and open index.html.
+V28: Removed account category labels from individual leaderboard rows. Category filters remain functional.
