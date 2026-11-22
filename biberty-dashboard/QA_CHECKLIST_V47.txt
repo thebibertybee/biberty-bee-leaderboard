@@ -1,0 +1,32 @@
+THE BIBERTY BEE — VERSION 47 POST-DEPLOYMENT QUALITY CHECK
+
+1. LIVE FEEDS AND FRESHNESS
+[ ] Refresh data; verify accurate follower reading date and independent post snapshot date.
+[ ] Check Accounts, Leaderboard, Follower History, Account Post Stats, and Post Snapshots CSV feeds are publicly readable.
+[ ] Check post data coverage and any Source mismatch / Unknown notes; investigate mismatches before using rankings publicly.
+[ ] Compare two accounts with known post sample sizes to Muse's sheet.
+[ ] Confirm partial, failed, or hidden-like posts are not counted as having zero likes.
+
+2. REPRODUCIBLE STATISTICS
+[ ] Choose an account with some missing likes or comments. Confirm paired interaction sample size is <= likes and comments samples.
+[ ] Verify 30-day post summaries are anchored to post snapshot time rather than follower update time.
+[ ] Compare an older academic year: no implication that likes were received that year.
+[ ] Compare accounts with and without recent follower-history readings; check the shared-date growth table or explicit unavailable explanation.
+[ ] Check account-name changes and any known ID/alias mappings in the Accounts feed.
+
+3. EXPORTS AND INTERPRETATION
+[ ] Generate an individual detailed report and one-page graphic; verify charts and metadata.
+[ ] Generate a 2-account, 4-account, and full-leaderboard report; check summaries, tables, eligibility, colors, and coverage notes.
+[ ] Test optional full post appendix; it should be OFF by default and may make very long PDFs.
+[ ] Save reports to PDF with Background graphics enabled; inspect page 1, middle charts, table width, and final methodology page.
+[ ] Check report cover's Bee logo / watermark appears in PDF and Instagram post links open from the standalone report.
+
+4. WIX, MOBILE AND LINKS
+[ ] Test direct GitHub Pages URL in Chrome and Safari.
+[ ] Test Wix-embedded dashboard on desktop, iPhone, and Android (navigation, category filters, search, Compare, Report Builder).
+[ ] Click an Instagram profile/post link from Wix embed and from the direct GitHub Pages version; if blocked, check Wix embed permissions for popups/new windows.
+[ ] Confirm no site-wide horizontal overflow on 390px and 320px screens; scroll wide data tables only within their own containers.
+[ ] Verify keyboard focus and access to filters, report controls and Download/Print buttons.
+[ ] Check old V46 ZIP can be redeployed if a regression is found.
+
+Automated fixture QA passed: 3 mock accounts, 21 unique posts (from multiple snapshots), paired sample correctness (5,5,4), follower freshness, a comparison report, 390px and 1440px viewport checks, and styled PDF creation. A separate unit test handled 25,000 synthetic post records. These synthetic observations were not added to the distributable website.
