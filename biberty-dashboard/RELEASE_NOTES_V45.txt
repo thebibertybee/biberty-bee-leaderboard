@@ -1,1 +1,0 @@
-Biberty Analytics Version 45: custom account selection for charts (up to six), four directly comparable content-performance visual panels for account comparisons, and improved PDF pagination. Selection affects charts only, not report totals or tables. Uses the existing public CSV feeds; no Muse changes required.

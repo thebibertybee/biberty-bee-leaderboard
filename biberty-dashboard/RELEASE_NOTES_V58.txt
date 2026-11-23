@@ -1,8 +1,0 @@
-Biberty Analytics Version 58 — Return to monochrome
-
-- Replaced The Pulse full-color bee with the existing exact white line-art logo.
-- Kept the oversized right/bottom cropped placement, at low opacity.
-- Removed all decorative glow/ambient halo effects from The Pulse.
-- Replaced the report cover bee with the same white line-art asset.
-- Removed all report bee shine, glow, and colored tint layers.
-- Preserved the navy banner gradient, report branding, red Pulse navigation, and other V57 features.
