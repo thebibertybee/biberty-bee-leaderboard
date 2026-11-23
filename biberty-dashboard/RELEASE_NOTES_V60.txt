@@ -1,0 +1,10 @@
+VERSION 60 — FIX RECOGNIZABLE MONOCHROME BEE
+
+- Fixed the incorrect solid white silhouette in Version 59.
+- Uses the existing thick white-line official bee (pulse-bee-outline.png) showing wings and segmented center.
+- Sized and placed on the right of The Pulse so its antennae and main body remain recognizable; slight right-edge cropping only.
+- Matching asset on report covers.
+- Removed experimental glow / color effects.
+- No changes to follower-data fetching.
+
+Note: Opening index.html from file:// may show unavailable follower data due to browser cross-origin restrictions. Test through GitHub Pages.

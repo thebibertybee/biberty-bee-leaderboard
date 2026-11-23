@@ -1,0 +1,5 @@
+Biberty Analytics V66 — Ranking filter presentation
+
+- Moved "Include official LU accounts" from the main Rankings toolbar into Advanced filters.
+- Preserved the student-run/independent-first default, unknown-affiliation handling, Reset filters, and report/chart behavior from V65.
+- Added a compact accessible disclosure panel with responsive positioning.
