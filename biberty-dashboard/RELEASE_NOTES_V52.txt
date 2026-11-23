@@ -1,0 +1,8 @@
+Biberty Analytics Version 52 — Lower-positioned oversized bee
+
+- Kept the exact Version 51 watermark art, scale, horizontal position and transparency.
+- Lowered the bee on desktop, tablet and mobile to reveal the antennae and top outline.
+- The bottom continues to be cropped by the hero banner.
+- No other layout or functionality changes.
+
+Deploy: Replace the biberty-dashboard folder in GitHub with this folder.

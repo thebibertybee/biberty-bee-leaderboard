@@ -1,0 +1,30 @@
+BIBERTY ANALYTICS — VERSION 63 QA
+
+Automated source tests:
+- node --check passed for app.js, report-builder.js, analytics-quality.js,
+  content-performance.js, embed-height.js, wix-autoheight-element.js
+- Controlled browser-data test (Chromium, inline fixture due local URL restrictions):
+  Desktop and 390px and 320px: four nonofficial/unclassified eligible accounts
+  visible by default; optional official scope expands to six; omitted explicit
+  'No' Include in Rankings excluded; reset restores scope; chart picker expands
+  from five to seven; leaderboard report selection expands from four to six;
+  generated report preview; no page-wide horizontal overflow.
+- Height message bridge: parent received content height 519px then 759px after
+  embedded content grew; fallback Open full dashboard link visible when embedded.
+- Optional custom-element experimental integration: handler resized its host to
+  955px in a controlled local-origin message test.
+
+Not verified:
+- Live Google Sheets account classification and data fields (test used synthetic data)
+- Actual Wix Editor fixed-height behavior and Wix Custom Element deployment
+- Every report PDF layout after deployment; V63 did not change report styling
+
+User deployment checks:
+1. Ensure the Accounts Google Sheet has an Affiliation value for confirmed official
+   LU accounts (recommended: 'Official LU' or 'Yes') and nonofficial accounts
+   (recommended: 'Independent' or 'No'). Blank means unknown and stays visible.
+2. Confirm Rankings shows the expected independent accounts; check Include official
+   LU accounts to expand; Reset should return to independent-only.
+3. Check mobile and desktop view on the published Wix page.
+4. Try Open full dashboard if the fixed-height Wix embed is too short.
+5. Do not assume the current free Wix embed will automatically resize itself.
