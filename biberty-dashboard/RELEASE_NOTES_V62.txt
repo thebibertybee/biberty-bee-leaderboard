@@ -1,0 +1,31 @@
+THE BIBERTY BEE — ANALYTICS V62
+Reliability and Visual Refinement (built on V61)
+
+DATA / CORRECTNESS
+- Recap slide 1 handles absent growth and percentages (shows em dash and explanation, never calls toFixed on null).
+- Honors explicit Include in Rankings = no/false/0/off/excluded, without removing accounts from opt-in comparisons.
+- Distinguishes unknown affiliation from Unofficial in report filters.
+- Reset restores the documented Unofficial / Memes & Satire defaults.
+- Historical report inventories are explicitly unverified unless the reporting window is the recent feed window. Recent complete flags are no longer carried into unrelated years.
+- Avoids claiming historical like-rate leaders without verified period coverage; sample sizes and observation caveats remain visible.
+
+INTERFACE
+- Dedicated labeled mobile section selector with the same shareable URL hashes.
+- Mobile report-builder quick-jump steps: Analysis / Accounts / Period / Format.
+- Swipe hints on wide data tables; pinned account-name column on rankings.
+- Protected the mobile Pulse headline from decorative bee art while keeping V61 desktop bee dimensions, color, and offset.
+- Pulse cards with a referenced account open filtered rankings; Biberty/Champion comparison opens Compare with both accounts selected.
+- Consolidated competing V50-V61 bee styling overrides into one canonical rule set for Pulse and report covers.
+
+TESTING NOTES
+- Uses the same public Google Sheets feeds as V61. Nothing changes in Muse or the source workbook.
+- Live Google Sheets, Instagram links, and Wix embed permissions need checking on the deployed GitHub Pages site.
+- No artificial or estimated follower or post figures are inserted.
+
+DEPLOYMENT
+- Upload/replace the full biberty-dashboard folder contents in GitHub; keep the existing URL and Wix embed.
+- Keep the V61 ZIP if a rollback is needed.
+ADDITIONAL TESTED IMPROVEMENTS
+- A touch/click feedback panel below growth and comparison follower charts shows the clicked data point's recorded count.
+- Data table headings include mobile swipe guidance; the ranked account name remains visible while the table scrolls.
+- Single recap PNG and all-eight-story ZIP exports passed standalone-browser tests.

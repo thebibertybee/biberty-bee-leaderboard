@@ -1,0 +1,17 @@
+Biberty Analytics — Version 63: Independent-first rankings
+
+- Replaced the Rankings Account type and Affiliation dropdowns with one “Include official LU accounts” checkbox (off by default).
+- Defaults to all tracked accounts not explicitly marked official, regardless of category, including affiliations awaiting classification. The interface says so; unknown status is not treated as verified student-run status.
+- Restored the missing accounts after Version 62’s overly restrictive affiliation filter.
+- Updated Growth Charts account picker with the same optional official LU accounts toggle. Manually chosen official accounts remain selectable when the toggle is off.
+- Removed Report Builder's category/affiliation dropdowns for leaderboard reports. Reports default to the same independent scope, with an official LU inclusion checkbox. Individual/comparison reports retain unrestricted manual account selection.
+- Reset filters restores the independent-only default, clears search and sorts by followers.
+- Existing branding, chart art, reports, recaps, and mobile features are retained.
+
+DATA NOTE: Affiliation must be explicitly populated in the Accounts spreadsheet to distinguish official LU accounts reliably. Blank/unrecognized affiliation is included in the independent/default view but described as unclassified, not confirmed student-run.
+
+WIX EMBED SUPPORT (V63):
+- Sends measured dashboard heights to an embedding host whenever the layout changes (embed-height.js).
+- Adds an "Open full dashboard" fallback link when viewed inside an iframe.
+- Includes an optional custom-element proof of concept and Wix setup guide.
+- IMPORTANT: the standard Wix Embed a Site element still has fixed height; automatic Wix resizing is NOT guaranteed or claimed.

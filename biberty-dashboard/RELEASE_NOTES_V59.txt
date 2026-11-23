@@ -1,0 +1,8 @@
+Biberty Analytics — Version 59
+
+Corrects the V58 bee-asset mistake:
+- Restores the bold, filled official bee silhouette, recolored monochrome white.
+- Uses the existing biberty-bee-monochrome.png asset derived from the original logo artwork.
+- Retains V58 oversized position, crop, and compact Pulse layout.
+- Uses the same filled silhouette on report covers.
+- No shine, colored fills, or glow; report masthead branding and all other features unchanged.
