@@ -1,6 +1,0 @@
-Biberty Analytics Version 54 — Bolder Bee Watermark
-- Enlarge the official bee outline on The Pulse hero from 540px to 665px desktop.
-- Lower its vertical center to retain visibility of the antennae at the top.
-- Keep dramatic cropping on the right and bottom (the hero clips overflow).
-- Scale positioning for tablet and phone.
-- All other functionality and navigation styling is unchanged from Version 53.

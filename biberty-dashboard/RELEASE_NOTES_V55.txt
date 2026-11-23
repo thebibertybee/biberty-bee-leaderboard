@@ -1,7 +1,0 @@
-Version 55 — Brand polish
-• The Pulse now displays the genuine full-color Biberty Bee artwork, oversized and partially cropped on the right and bottom.
-• The detailed report cover also uses the large full-color official emblem as a graphic element.
-• The small report masthead emblem uses an alpha-preserving monochrome white asset.
-• The masthead now reads “BIBERTY ANALYTICS” instead of “THE BIBERTY BEE PRESENTS.”
-• The one-page canvas summary header uses “BIBERTY ANALYTICS.”
-All underlying analytics, data feeds, and metrics are unchanged.
