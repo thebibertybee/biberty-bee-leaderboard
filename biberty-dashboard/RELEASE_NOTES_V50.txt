@@ -1,0 +1,6 @@
+Version 50 — The Pulse logo and navigation refinement
+- Replaced opaque/silhouette Pulse watermark with a line-art derivative of the project's original Biberty Bee emblem (navy stroke paths only, rendered white). Original logo untouched.
+- Reduced watermark scale and moved fully inside the hero, preserving text and navy gradient.
+- Gave The Pulse a persistent brick-red filled navigation tab with white type, including when another page is active.
+- Other navigation buttons and analytics functionality are unchanged.
+Deployment: replace the biberty-dashboard folder; keep the Wix embed URL.
