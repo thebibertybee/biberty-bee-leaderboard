@@ -1,0 +1,9 @@
+Optional fields in Post Snapshots (keep existing column names and IDs):
+
+Display Title: human-readable, truthful short identifier for a specific post, e.g. Biberty Bee headline. Prefer user-curated titles. Never infer an unsupported title from engagement metrics.
+Caption: publicly available caption text, if reliably and permissibly retrievable; the dashboard uses its first substantive line as a fallback ONLY for The Biberty Bee.
+Thumbnail URL: HTTPS link to an image approved for display on Biberty Analytics. URLs can expire or disallow hotlinking; test in Wix and PDF. No image stored by dashboard.
+
+Preserve the existing Post ID (for deduplication). Post URL, Likes, Comments, Post date, Snapshot date, Media type remain required/expected. Existing posts still display labels such as “Reel · Nov 17, 2026” where titles are unavailable.
+
+Reports will not display invented cover images or headlines.
