@@ -1,8 +1,0 @@
-Post-deployment verification (recommended before public launch):
-1. Content Performance: data status says Recorded through a real date and Data Check shows unique post count.
-2. Compare a known account (e.g., The Biberty Bee) to the matching public sheet Post Snapshots. Confirm a post with a blank like count is not interpreted as zero.
-3. Verify one post with multiple snapshots appears once in Top Posts and report post totals.
-4. Try an academic year prior to follower tracking: follower comparisons should say unavailable, but collected historical posts should still appear.
-5. Compare 2–4 accounts in a detailed PDF. Check the common-period follower table, the post comparison, the Like Rate chart, sample counts, and physical page-width.
-6. Test Instagram links from your Wix embedded dashboard; browser/Instagram restrictions may still affect popups. If blocked, use a direct GitHub Pages tab as a fallback.
-7. Verify new weekly data and Muse's historical backfill are reflected after Refresh Data.
