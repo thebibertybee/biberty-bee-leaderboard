@@ -1,0 +1,2 @@
+Version 49 — Pulse watermark only
+Replaced the decorative letter B on The Pulse hero with the exact official Biberty Bee symbol asset, rendered as a subtle white watermark. All other dashboard features are unchanged from Version 48.

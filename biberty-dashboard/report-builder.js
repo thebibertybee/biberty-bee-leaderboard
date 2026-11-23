@@ -1,0 +1,421 @@
+'use strict';
+// Separate public, client-side report builder. Uses in-memory account/history data from app.js.
+let rbSelected=new Set(),rbReady=false,rbLast=null;
+let rbChartSelected=new Set(),rbChartCustomized=false;
+const rbBeeOutline=new Image(); rbBeeOutline.src='biberty-bee-outline.png';
+rbBeeOutline.onload=()=>{if(rbLast&&rbLast.format==='summary')rbInfographicDraw(rbLast)};
+const rb=(id)=>document.getElementById(id);
+const rbType=()=>document.querySelector('input[name="rbType"]:checked').value;
+const rbFormat=()=>document.querySelector('input[name="rbFormat"]:checked').value;
+const rbDate=(ms)=>new Date(ms).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+const rbShort=(ms)=>new Date(ms).toLocaleDateString('en-US',{month:'short',day:'numeric'});
+const rbPct=(n)=>n===null?'—':`${n>=0?'+':''}${n.toFixed(1)}%`;
+const rbSigned=(n)=>n===null||!Number.isFinite(n)?'—':`${n>0?'+':''}${fmt(n)}`;
+const rbDaily=(n)=>n===null||!Number.isFinite(n)?'—':`${n>0?'+':''}${n.toFixed(1)}/day`;
+function rbSchoolStart(year){return new Date(year,7,1).getTime()}
+function rbWindow(){
+ const v=rb('rbPeriod').value,points=state.history.map(p=>p.time).filter(Number.isFinite),postDates=(typeof postState!=='undefined'&&postState.snapshotsAvailable)?postState.records.map(p=>p.posted):[];
+ const now=Math.max(...points,...(postDates.length?postDates:[0]),Date.now());
+ const available=[...points,...postDates],latest=available.length?Math.max(...available):now,earliest=available.length?Math.min(...available):now,yr=schoolYearOf(now);
+ if(v==='ytd')return {from:rbSchoolStart(yr),to:now,label:`${yr}–${String(yr+1).slice(-2)} School Year to Date`};
+ if(v==='all')return {from:earliest,to:latest,label:'All Available Recorded History'};
+ if(v==='multi'){let a=+rb('rbFromYear').value,b=+rb('rbToYear').value;return {from:rbSchoolStart(Math.min(a,b)),to:rbSchoolStart(Math.max(a,b)+1)-1,label:`${Math.min(a,b)}–${Math.max(a,b)+1} Multiple Academic Years`}}
+ if(v==='custom'){let from=new Date(rb('rbStart').value+'T00:00:00').getTime(),to=new Date(rb('rbEnd').value+'T23:59:59').getTime();return {from,to,label:`${rbDate(from)} – ${rbDate(to)}`}}
+ let y=+v;return {from:rbSchoolStart(y),to:rbSchoolStart(y+1)-1,label:`${y}–${String(y+1).slice(-2)} Academic Year`}
+}
+function rbMetrics(a,window){let r=state.history.filter(p=>p.handle===a.handle&&p.time>=window.from&&p.time<=window.to).sort((x,y)=>x.time-y.time),start=r[0]?.followers??null,end=r.at(-1)?.followers??null,gain=r.length>=2?end-start:null,pct=gain!==null&&start>0?100*gain/start:null;let crossed=[];for(const [limit,label] of [[750,'Bronze'],[2000,'Silver'],[5000,'Gold'],[10000,'Platinum'],[20000,'Double Platinum']]){for(let i=1;i<r.length;i++)if(r[i-1].followers<limit&&r[i].followers>=limit){crossed.push({limit,label,date:r[i].time});break}}const days=r.length>=2?(r.at(-1).time-r[0].time)/86400000:null,daily=days>0?gain/days:null;return {a,r,start,end,gain,pct,crossed,days,daily,coverage:r.length>=2,first:r.length?rbDate(r[0].time):null,last:r.length?rbDate(r.at(-1).time):null}}
+// Coverage from weekly source summaries only certifies the recent 30-day feed.
+// The historical backfill has no per-period completeness declaration yet.
+function rbPostCoverage(account,d){
+ if(typeof postState==='undefined'||!postState.snapshotsAvailable||!Number.isFinite(postState.asOf))return {label:'Unverified inventory',complete:false};
+ const last30=postState.asOf-30*AQ_DAY;
+ const recentWindow=Math.abs(d.window.from-last30)<=2*AQ_DAY&&d.window.to>=postState.asOf-2*AQ_DAY&&d.window.to<=postState.asOf+2*AQ_DAY;
+ const feed=postState.stats.find(x=>x.a.handle===account.handle);
+ if(recentWindow&&feed?.cov.name==='Complete')return {label:'Complete · recent 30D',complete:true};
+ return {label:recentWindow?'Recent coverage unverified':'Historical inventory unverified',complete:false};
+}
+function rbPick(){const type=rbType();let accounts=state.accounts.filter(a=>rbSelected.has(a.handle));if(type==='leaderboard'){const includeOfficial=rb('rbIncludeOfficial').checked;accounts=state.accounts.filter(a=>a.inRankings&&eligible(a,includeOfficial))}else if(type==='individual')accounts=accounts.slice(0,1);else accounts=accounts.slice(0,4);return accounts}
+function rbPicker(){const type=rbType(),hide=type==='leaderboard';rb('rbAccountGroup').hidden=hide;rb('rbCategoryGroup').hidden=!hide;rbUpdateChartPicker();if(hide)return;const max=type==='individual'?1:4,term=rb('rbSearch').value.trim().toLowerCase();const chosen=state.accounts.filter(a=>rbSelected.has(a.handle));rb('rbSelected').textContent=`${chosen.length} selected · ${type==='individual'?'choose 1 account':'choose 2–4 accounts'}`;rb('rbAccountList').innerHTML=state.accounts.filter(a=>a.name.toLowerCase().includes(term)||a.handle.includes(term)).map(a=>`<label class="builder-account-row"><input type="checkbox" value="${esc(a.handle)}" ${rbSelected.has(a.handle)?'checked':''} ${type==='comparison'&&!rbSelected.has(a.handle)&&chosen.length>=max?'disabled':''}><span class="builder-account-dot" style="background:${colorFor(a.handle)}">${esc(abbreviation(a))}</span><span><b>${esc(a.name)}</b><small>@${esc(a.handle)} · ${fmt(a.followers)} followers</small></span></label>`).join('')||'<p class="builder-note">No matching accounts.</p>'}
+function rbDefaultChartRows(d){
+ const rows=d.rows;
+ if(d.type!=='leaderboard')return rows;
+ if(typeof postState==='undefined'||!postState.snapshotsAvailable)return rows.slice(0,6);
+ const eligible=rbPostSummaryRows(d);
+ const counts=new Map();eligible.forEach(x=>counts.set(x.a.handle,(counts.get(x.a.handle)||0)+(x.likes!==null?1:0)));
+ return rows.slice().sort((a,b)=>(counts.get(b.a.handle)||0)-(counts.get(a.a.handle)||0)||a.a.name.localeCompare(b.a.name)).slice(0,6);
+}
+function rbChartRows(d){
+ if(!rbChartCustomized)return rbDefaultChartRows(d);
+ return d.rows.filter(r=>rbChartSelected.has(r.a.handle)).slice(0,6);
+}
+function rbUpdateChartPicker(){
+ const box=rb('rbChartGroup');if(!box)return;
+ const type=rbType(),detailed=rbFormat()==='detailed';
+ box.hidden=type==='individual'||!detailed;
+ if(box.hidden)return;
+ const accounts=rbPick(),term=rb('rbChartSearch').value.trim().toLowerCase();
+ const visible=accounts.filter(a=>a.name.toLowerCase().includes(term)||a.handle.toLowerCase().includes(term));
+ const defaults=type==='leaderboard'?'the six most-active accounts':'all selected comparison accounts';
+ rb('rbChartCounter').textContent=rbChartCustomized?`${rbChartSelected.size} chart account(s) chosen (maximum 6)`:`Automatic: ${defaults}`;
+ rb('rbChartList').innerHTML=visible.map(a=>`<label class="rb-chart-choice"><input type="checkbox" value="${esc(a.handle)}" ${rbChartCustomized&&rbChartSelected.has(a.handle)?'checked':''} ${rbChartCustomized&&!rbChartSelected.has(a.handle)&&rbChartSelected.size>=6?'disabled':''}><span>${esc(a.name)}</span><small>@${esc(a.handle)}</small></label>`).join('')||'<p class="builder-note">No matching accounts.</p>';
+}
+function rbRefreshPeriod(){const isMulti=rb('rbPeriod').value==='multi',custom=rb('rbPeriod').value==='custom';rb('rbAcademicCustom').hidden=!isMulti;rb('rbDateCustom').hidden=!custom}
+function rbHeadline(){const type=rbType(),fmtName=rbFormat()==='detailed'?'Detailed Report':'One-Page Summary';rb('rbPreviewType').textContent=({individual:'Account Performance',comparison:'Account Comparison',leaderboard:'Leaderboard Analysis'}[type])+' · '+fmtName}
+function rbValidate(){const type=rbType(),arr=rbPick(),win=rbWindow();if(type==='individual'&&arr.length!==1)return 'Choose exactly one account.';if(type==='comparison'&&(arr.length<2||arr.length>4))return 'Choose between two and four accounts.';if(!arr.length)return 'No matching accounts were found for these filters.';if(!Number.isFinite(win.from)||!Number.isFinite(win.to)||win.to<win.from)return 'Choose a valid date range (start must be before end).';return null}
+function rbDataset(){const window=rbWindow(),accounts=rbPick(),rows=accounts.map(a=>rbMetrics(a,window));const ranked=rows.filter(m=>m.end!==null).sort((a,b)=>b.end-a.end);return {window,rows,ranked,type:rbType(),format:rbFormat(),appendixMode:rb('rbAppendixMode').value,created:new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}}
+const rbCaption=(txt)=>`<span class="rb-caption">${esc(txt)}</span>`;
+function rbChart(rows){const eligible=rows.filter(m=>m.r.length>=2).slice(0,8);if(!eligible.length)return '<div class="rb-nohistory">Not enough readings in the chosen period to draw a growth chart.</div>';
+ let values=eligible.flatMap(m=>m.r.map(p=>p.followers)),times=eligible.flatMap(m=>m.r.map(p=>p.time)),min=Math.min(...values),max=Math.max(...values),tmin=Math.min(...times),tmax=Math.max(...times),H=290,W=790,L=74,R=35,T=28,B=48;
+ if(min===max){min=Math.max(0,min-1);max+=1}if(tmin===tmax)tmax+=86400000;
+ const xx=t=>L+(t-tmin)/(tmax-tmin)*(W-L-R),yy=v=>T+(max-v)/(max-min)*(H-T-B);
+ let svg=`<svg viewBox="0 0 ${W} ${H}" class="rb-svg" role="img" aria-label="Recorded follower history chart">`;
+ for(let i=0;i<5;i++){let y=T+(H-T-B)*i/4;svg+=`<line x1="${L}" x2="${W-R}" y1="${y}" y2="${y}" stroke="#e0e5ef"/><text x="${L-9}" y="${y+5}" font-size="13" text-anchor="end" fill="#64718b">${fmt(max-i*(max-min)/4)}</text>`}
+ for(let i=0;i<=3;i++){let t=tmin+(tmax-tmin)*i/3;svg+=`<text x="${xx(t)}" y="${H-12}" text-anchor="middle" fill="#64718b" font-size="12">${esc(rbShort(t))}</text>`}
+ eligible.forEach(m=>{let line=m.r.map(p=>`${xx(p.time).toFixed(1)},${yy(p.followers).toFixed(1)}`).join(' ');svg+=`<polyline points="${line}" fill="none" stroke="${colorFor(m.a.handle)}" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"><title>${esc(m.a.name)}</title></polyline>`});svg+='</svg>';
+ svg+=`<div class="rb-chart-legend">${eligible.map(m=>`<span><i style="background:${colorFor(m.a.handle)}"></i>${esc(m.a.name)}</span>`).join('')}</div>`;if(rows.length>8)svg+='<p class="rb-caption">Chart displays the first eight accounts; all matching accounts appear in the table.</p>';return svg}
+function rbTable(rows){return `<div class="rb-table-scroller"><table class="rb-report-table"><thead><tr><th>Account</th><th>Last Recorded Followers</th><th>Net Gain</th><th>Growth %</th><th>Avg. Gain / Day</th><th>Days Observed</th><th>Milestones Passed</th></tr></thead><tbody>${rows.map(m=>`<tr><td><b>${esc(m.a.name)}</b><small>@${esc(m.a.handle)}</small></td><td>${m.end===null?'No records':fmt(m.end)}<small>${m.last||'No date'}</small></td><td>${rbSigned(m.gain)}</td><td>${rbPct(m.pct)}</td><td>${rbDaily(m.daily)}</td><td>${m.days===null?'—':m.days.toFixed(0)}</td><td>${m.crossed.length?esc(m.crossed.map(x=>x.label).join(', ')):'—'}</td></tr>`).join('')}</tbody></table></div>`}
+// Post timeline: one point per published post, using the latest available snapshot of that post.
+// This is NOT a history of likes accumulating on an individual post.
+function rbPostPoints(d){
+ return rbPostSummaryRows(d).filter(p=>p.likes!==null).map(p=>({a:p.a,id:p.id,posted:p.posted,seen:p.likesSeen,likes:p.likes,url:p.url}))
+  .sort((a,b)=>a.posted-b.posted||a.a.name.localeCompare(b.a.name));
+}
+function rbLikesChart(d){
+ const allowed=new Set(rbChartRows(d).map(x=>x.a.handle));
+ const pts=rbPostPoints(d).filter(x=>allowed.has(x.a.handle));
+ if(!pts.length)return '<div class="rb-nohistory">No posts with visible like counts were recorded for this reporting period.</div>';
+ // A crowded account-by-post scatterplot conceals identity and overplots values.
+ // Instead, show one small-multiple bar chart per account with the median likes
+ // on posts PUBLISHED in that bucket. Counts are always visible.
+ const groups=rbChartRows(d).map(m=>({a:m.a,points:pts.filter(p=>p.a.handle===m.a.handle)})).filter(g=>g.points.length);
+ // Leaderboard reports can include dozens of accounts; keep the visual readable
+ // and explicitly describe the subset rather than silently hiding accounts.
+ const chartGroups=d.type==='leaderboard'?groups.slice().sort((a,b)=>b.points.length-a.points.length||a.a.name.localeCompare(b.a.name)).slice(0,6):groups;
+ let first=Math.min(...pts.map(p=>p.posted)),last=Math.max(...pts.map(p=>p.posted));
+ const monthIndex=t=>{let dt=new Date(t);return dt.getFullYear()*12+dt.getMonth()};
+ const startM=monthIndex(first),endM=monthIndex(last),useQuarter=endM-startM>14;
+ const step=useQuarter?3:1;
+ const bucket=x=>Math.floor(x/step)*step;
+ const b0=bucket(startM),b1=bucket(endM),buckets=[];
+ for(let m=b0;m<=b1;m+=step)buckets.push(m);
+ const label=m=>{const year=Math.floor(m/12),month=m%12;
+  if(useQuarter)return `Q${Math.floor(month/3)+1} '${String(year).slice(-2)}`;
+  return new Date(year,month,1).toLocaleDateString('en-US',{month:'short',year:'2-digit'});
+ };
+ const median=v=>{const a=v.slice().sort((x,y)=>x-y),n=a.length;return n%2?a[(n-1)/2]:(a[n/2-1]+a[n/2])/2};
+ const panels=chartGroups.map(g=>{
+  const byMonth=new Map();g.points.forEach(p=>{let k=bucket(monthIndex(p.posted));if(!byMonth.has(k))byMonth.set(k,[]);byMonth.get(k).push(p.likes)});
+  const rows=buckets.map(k=>({k,values:byMonth.get(k)||[]}));
+  const ymax=Math.max(1,...rows.filter(r=>r.values.length).map(r=>median(r.values)));
+  const W=760,H=248,L=65,R=18,T=19,B=55,plotW=W-L-R,plotH=H-T-B;
+  const colW=plotW/rows.length,barW=Math.max(8,Math.min(45,colW*.55));
+  let svg=`<svg class="rb-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(g.a.name)}: median likes per published post by ${useQuarter?'quarter':'month'}">`;
+  for(let i=0;i<=3;i++){let y=T+plotH*i/3;svg+=`<line x1="${L}" x2="${W-R}" y1="${y}" y2="${y}" stroke="#e2e7f0"/><text x="${L-9}" y="${y+4}" text-anchor="end" font-size="12" fill="#62708c">${esc(fmt(ymax*(1-i/3)))}</text>`}
+  rows.forEach((r,i)=>{const x=L+colW*i+colW/2,yBottom=T+plotH;
+    if(r.values.length){const val=median(r.values),height=(val/ymax)*(plotH-5),yy=yBottom-height;
+      svg+=`<rect x="${(x-barW/2).toFixed(1)}" y="${yy.toFixed(1)}" width="${barW.toFixed(1)}" height="${height.toFixed(1)}" rx="3" fill="#263e81"><title>${esc(label(r.k))}: ${esc(fmt(val))} median likes from ${r.values.length} post${r.values.length===1?'':'s'}</title></rect>`;
+      svg+=`<text x="${x.toFixed(1)}" y="${Math.max(14,yy-6).toFixed(1)}" text-anchor="middle" font-size="10" font-weight="600" fill="#263e81">${esc(fmt(val))}</text>`;
+      svg+=`<text x="${x.toFixed(1)}" y="${H-27}" text-anchor="middle" font-size="10" fill="#62708c">n=${r.values.length}</text>`;
+    } else {svg+=`<text x="${x.toFixed(1)}" y="${H-27}" text-anchor="middle" font-size="10" fill="#8995a7">—</text>`}
+    svg+=`<text x="${x.toFixed(1)}" y="${H-9}" text-anchor="middle" font-size="${rows.length>10?9:11}" fill="#42506c">${esc(label(r.k))}</text>`;
+  });
+  svg+='</svg>';
+  const allLikes=g.points.map(p=>p.likes),total=allLikes.length,med=median(allLikes);
+  return `<section class="rb-likes-panel"><header><strong>${esc(g.a.name)}</strong><span>@${esc(g.a.handle)} · ${fmt(total)} post${total===1?'':'s'} · ${fmt(med)} overall median likes</span></header>${svg}</section>`;
+ }).join('');
+ let note=`${fmt(pts.length)} posts with visible likes. Bars show <b>median likes per post</b> among posts published in each ${useQuarter?'quarter':'month'}. The number of posts (n) is shown under each bar. An em dash means no eligible posts in that period. Each account has its <b>own vertical scale</b>, so compare numerical labels rather than bar heights across accounts. Likes are their latest recorded values, not likes received during that month.`;
+ if(d.type==='leaderboard'&&groups.length>6)note+=` The charts show the six accounts with the most eligible posts (${groups.length} accounts have eligible data); all accounts remain included in report statistics and tables.`;
+ return `<div class="rb-likes-chart"><p class="rb-post-note">${note}</p>${panels}</div>`;
+}
+
+// Per-post report detail: deduplicate snapshots and independently preserve each
+// metric's latest *available* reading. Blank means unavailable, never zero.
+function rbPostSummaryRows(d){
+ if(typeof postState==='undefined'||!postState.snapshotsAvailable)return [];
+ if(d._postRows)return d._postRows;
+ const handles=new Set(d.rows.map(m=>m.a.handle));
+ // Calculate once per immutable report preview instead of rescanning history for each panel.
+ d._postRows=postState.records.filter(p=>handles.has(p.a.handle)&&p.posted>=d.window.from&&p.posted<=d.window.to)
+  .sort((a,b)=>a.a.name.localeCompare(b.a.name)||b.posted-a.posted||a.id.localeCompare(b.id));
+ return d._postRows;
+}
+function rbPeriodPostSummaries(d){return aqSummaries(rbPostSummaryRows(d),d.rows.map(m=>m.a),d.window,postState.asOf)}
+function rbPostHighlights(d){
+ if(typeof postState==='undefined'||!postState.snapshotsAvailable)return '<div class="rb-nohistory">Post snapshots are unavailable; highlights cannot be calculated.</div>';
+ const all=rbPostSummaryRows(d),groups=d.rows.map(r=>({a:r.a,posts:all.filter(p=>p.a.handle===r.a.handle)})).filter(g=>g.posts.length);
+ if(!groups.length)return '<p class="rb-caption">No recorded posts fall in the selected reporting period; this is not proof of no posting unless coverage is complete.</p>';
+ const nfmt=v=>v===null?'—':fmt(v);
+ const selection=d.type==='individual'?5:1;
+ const maxAccounts=d.type==='leaderboard'?12:groups.length;
+ let out=`<p class="rb-caption">Highlights from ${fmt(all.length)} unique recorded posts published during ${esc(d.window.label)}. ${d.type==='individual'?'Five':'One'} most-liked recorded post${d.type==='individual'?'s':''} per account. Missing likes cannot be ranked. All eligible posts remain in the averages, historical charts, and comparison tables. A full post appendix is optional.</p>`;
+ for(const g of groups.slice(0,maxAccounts)){
+  const visible=g.posts.filter(p=>p.likes!==null).sort((a,b)=>b.likes-a.likes||b.posted-a.posted).slice(0,selection);
+  const max=Math.max(1,...visible.map(p=>p.likes));
+  out+=`<section class="rb-highlight-panel"><div class="rb-highlight-head"><strong>${esc(g.a.name)}</strong><span>@${esc(g.a.handle)} · ${fmt(g.posts.length)} recorded posts</span></div>`;
+  if(!visible.length){out+='<p class="rb-caption">No posts with visible like counts available to rank.</p></section>';continue}
+  for(const [i,post] of visible.entries()){
+   const desc=`${rbShort(post.posted)} · ${post.media||'Post'}`;
+   const display=aqDisplayTitle(post);
+   const title=post.url?`<a href="${esc(post.url)}" target="_blank" rel="noopener noreferrer" data-instagram-link>${esc(display)}</a>`:`<span>${esc(display)}</span>`;
+   const thumb=post.thumbnailUrl?`<img class="rb-post-thumbnail" src="${esc(post.thumbnailUrl)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.hidden=true">`:'';
+   out+=`<div class="rb-highlight-row"><span class="rb-highlight-index">${i+1}</span><div class="rb-highlight-name"><div class="rb-post-identity">${thumb}<span class="rb-post-identity-copy"><span class="rb-post-identity-title">${title}</span><span class="rb-post-identity-sub">${esc(desc)}</span></span></div><small>${post.comments===null?'Comments unavailable':fmt(post.comments)+' comments'}</small></div><div class="rb-highlight-like"><div class="rb-highlight-track"><span style="width:${(100*post.likes/max).toFixed(2)}%"></span></div><strong>${nfmt(post.likes)} likes</strong></div></div>`;
+  }
+  out+='</section>';
+ }
+ if(groups.length>maxAccounts)out+=`<p class="rb-caption">Showing ${maxAccounts} of ${groups.length} accounts in highlights to keep this report readable. All accounts remain included in summary and comparison tables.</p>`;
+ out+='<p class="rb-caption">These are the latest recorded likes on posts published during the period, not their like counts on the day they were published.</p>';
+ return out;
+}
+function rbPostBreakdown(d){
+ if(typeof postState==='undefined'||!postState.ready)return '<div class="rb-nohistory">Post data unavailable.</div>';
+ const rows=rbPostSummaryRows(d);if(!rows.length)return '<div class="rb-nohistory">No recorded posts during this reporting period.</div>';
+ let out='';let shown=0;
+ for(const r of d.rows){const original=rows.filter(p=>p.a.handle===r.a.handle).sort((a,b)=>b.posted-a.posted),posts=d.appendixMode==='compact25'?original.slice(0,25):original;
+  if(!posts.length)continue;shown+=posts.length;
+  out+=`<div class="rb-compact-group"><h4>${esc(r.a.name)} <small>@${esc(r.a.handle)} · ${fmt(posts.length)} of ${fmt(original.length)} posts</small></h4><table class="rb-appendix-table rb-identity-appendix"><thead><tr><th>Published</th><th>Post / Headline</th><th>Likes</th><th>Comments</th><th>Instagram</th></tr></thead><tbody>`;
+  for(const p of posts){const url=p.url?`<a href="${esc(p.url)}" target="_blank" rel="noopener noreferrer">View ↗</a>`:'—';out+=`<tr><td>${esc(rbShort(p.posted))}</td><td><span class="rb-compact-identity">${esc(aqDisplayTitle(p))}</span></td><td>${p.likes===null?'—':fmt(p.likes)}</td><td>${p.comments===null?'—':fmt(p.comments)}</td><td>${url}</td></tr>`}
+  out+='</tbody></table></div>';
+ }
+ out+=`<p class="rb-post-note">${fmt(shown)} of ${fmt(rows.length)} recorded posts shown. ${d.appendixMode==='compact25'?'Limited to the most recent 25 per account to keep the PDF compact.':'All recorded posts included; very large datasets can still require several pages.'} Likes and comments are the latest observed counters, not totals at publication. — means unavailable.</p>`;
+ return out;
+}
+
+function rbContentCards(d){
+ if(typeof postState==='undefined'||!postState.snapshotsAvailable)return '';
+ const rows=rbPeriodPostSummaries(d),postN=rows.reduce((n,r)=>n+r.total,0),all=rows.flatMap(r=>r.rows);
+ const like=all.filter(p=>p.likes!==null).map(p=>p.likes),comment=all.filter(p=>p.comments!==null).map(p=>p.comments);
+ const items=[['Posts Recorded',fmt(postN),`Published during selected period`],['Average Likes / Post',like.length?cpDecimal(aqMean(like)):'—',`${fmt(like.length)} eligible like counts`],['Median Likes / Post',like.length?cpDecimal(aqMedian(like)):'—',`Less sensitive to one viral post`],['Average Comments / Post',comment.length?cpDecimal(aqMean(comment)):'—',`${fmt(comment.length)} eligible comment counts`]];
+ return `<h3 class="rb-chart-title">Post-Performance Summary · Selected Period</h3><p class="rb-caption">All figures below use posts published during ${esc(d.window.label)}. Like and comment counts are their <b>latest recorded values</b>, not their totals on the publication date.</p><div class="rb-content-cards">${items.map(([name,value,sub])=>`<div><small>${esc(name)}</small><strong>${esc(value)}</strong><span>${esc(sub)}</span></div>`).join('')}</div>`;
+}
+function rbHistoricalContent(d){
+ if(typeof postState==='undefined'||!postState.snapshotsAvailable)return '';
+ const summaries=rbPeriodPostSummaries(d);
+ const observed=summaries.reduce((n,s)=>n+s.total,0);
+ if(!observed)return '<h3 class="rb-chart-title">Post Performance During This Period</h3><p class="rb-caption">No recorded posts published in this period. This is not proof of no activity while collection remains incomplete.</p>';
+ const rows=summaries.map(s=>{
+  const cov=rbPostCoverage(s.a,d);
+  const limited=s.likeN<5?' <small class="rb-small-sample">Small sample</small>':'';
+  return `<tr><td><b>${esc(s.a.name)}</b><small>${esc(cov.label)}</small></td><td>${fmt(s.total)}</td><td>${s.avgLikes===null?'—':cpDecimal(s.avgLikes)}<small>n=${s.likeN}</small>${limited}</td><td>${s.medianLikes===null?'—':cpDecimal(s.medianLikes)}</td><td>${s.avgComments===null?'—':cpDecimal(s.avgComments)}<small>n=${s.commentN}</small></td><td>${aqPercent(s.likeRate)}</td><td>${aqPercent(s.engagement)}<small>paired n=${s.interactionN}</small></td></tr>`;
+ }).join('');
+ return `<h3 class="rb-chart-title">Post Performance During This Period</h3><p class="rb-caption">${fmt(observed)} unique posts published during ${esc(d.window.label)}. Likes and comments are the latest available recorded counters, not counts measured in that historical period. Like Rate compares average likes with <b>current</b> followers; observed Interaction Rate uses posts with <b>both</b> likes and comments available. Neither measures reach or views. Five posts is only a minimum ranking threshold, not proof of representativeness. Coverage may be partial.</p><div class="rb-table-scroller"><table class="rb-report-table rb-content-table rb-historical-table"><thead><tr><th>Account</th><th>Posts</th><th>Avg. Likes</th><th>Median Likes</th><th>Avg. Comments</th><th>Like Rate</th><th>Interaction Rate*</th></tr></thead><tbody>${rows}</tbody></table></div><p class="rb-caption">*Observed Interaction Rate = mean(likes + comments on the same eligible posts) ÷ current followers × 100. The eligible paired-post count is shown for every account.</p>`;
+}
+function rbPostRateChart(d){
+ if(typeof postState==='undefined'||!postState.snapshotsAvailable)return '';
+ const summary=rbPeriodPostSummaries(d).filter(s=>s.likeRate!==null&&s.likeN>0);
+ if(!summary.length)return '';
+ // Keep comparison graphs legible; rankings remain available in tables for all accounts.
+ const allowed=new Set(rbChartRows(d).map(x=>x.a.handle));
+ const chosen=summary.filter(s=>allowed.has(s.a.handle)).sort((a,b)=>b.likeRate-a.likeRate).slice(0,6);
+ if(!chosen.length)return ''; 
+ const W=800,L=200,R=118,T=24,ROW=63,H=T+chosen.length*ROW+43,max=Math.max(1,...chosen.map(s=>s.likeRate)),span=W-L-R;
+ let out=`<section class="rb-chart-block"><h3 class="rb-chart-title">Like Rate Relative to Current Followers</h3><p class="rb-caption">Average recorded likes per post ÷ <b>current followers</b> × 100. This is not a like-to-view ratio. Posts with hidden likes are excluded; historical follower counts cannot be inferred. ${d.type==='leaderboard'?'Shows up to six chart-selected accounts by observed Like Rate; tabular summaries include all accounts.':''}</p>`;
+ let svg=`<svg class="rb-svg rb-post-rate-chart" role="img" aria-label="Audience-adjusted average like rate comparison" viewBox="0 0 ${W} ${H}">`;
+ chosen.forEach((s,i)=>{const y=T+i*ROW,bw=Math.max(1,s.likeRate/max*span),name=s.a.name.length>25?s.a.name.slice(0,23)+'…':s.a.name;
+  svg+=`<text x="${L-13}" y="${y+22}" fill="#172451" text-anchor="end" font-size="16" font-weight="700">${esc(name)}</text><rect x="${L}" y="${y+3}" width="${span}" height="24" rx="3" fill="#e9edf4"/><rect x="${L}" y="${y+3}" width="${bw.toFixed(2)}" height="24" rx="3" fill="${colorFor(s.a.handle)}"/><text x="${W-4}" y="${y+21}" fill="#14234f" text-anchor="end" font-size="15" font-weight="700">${s.likeRate.toFixed(2)}%</text><text x="${L}" y="${y+46}" fill="#68758e" font-size="12">${s.likeN} post${s.likeN===1?'':'s'} with visible likes${s.likeN<5?' · small sample':''}</text>`;
+ });
+ svg+='</svg>';return out+svg+'</section>';
+}
+function rbComparisonVisuals(d){
+ if(d.type!=='comparison'||typeof postState==='undefined'||!postState.snapshotsAvailable)return '';
+ const allowed=new Set(rbChartRows(d).map(x=>x.a.handle));
+ const summaries=rbPeriodPostSummaries(d).filter(x=>allowed.has(x.a.handle));
+ const metrics=[
+  {name:'Average Likes per Post',key:'avgLikes',n:'likeN',unit:' likes',note:'Uses posts with a visible like count.'},
+  {name:'Median Likes per Post',key:'medianLikes',n:'likeN',unit:' likes',note:'Less influenced by a single viral post.'},
+  {name:'Like Rate · Current Followers',key:'likeRate',n:'likeN',unit:'%',note:'Average likes per post ÷ current followers × 100. Not a view rate.'},
+  {name:'Average Comments per Post',key:'avgComments',n:'commentN',unit:' comments',note:'Uses posts with a visible comment count.'}
+ ];
+ const panels=metrics.map(m=>{
+  const records=summaries.filter(s=>s[m.key]!==null&&Number.isFinite(s[m.key]));
+  if(!records.length)return `<div class="rb-metric-panel"><h4>${esc(m.name)}</h4><p class="rb-caption">No available observations.</p></div>`;
+  const max=Math.max(1,...records.map(s=>s[m.key]));
+  return `<section class="rb-metric-panel"><h4>${esc(m.name)}</h4><p class="rb-caption">${esc(m.note)} Same bar scale across the compared accounts; counts are printed beside each bar.</p>${records.map(s=>{
+   const v=s[m.key],label=m.key==='likeRate'?v.toFixed(2)+'%':cpDecimal(v);
+   return `<div class="rb-metric-row"><div class="rb-metric-account" title="${esc(s.a.name)}">${esc(s.a.name)}<small>n=${s[m.n]}${s[m.n]<5?' · small sample':''}</small></div><div class="rb-metric-track"><span style="width:${Math.max(0,v/max*100).toFixed(2)}%;background:${colorFor(s.a.handle)}"></span></div><strong>${esc(label)}</strong></div>`;
+  }).join('')}</section>`;
+ }).join('');
+ return `<section class="rb-metrics-section"><h3 class="rb-chart-title">Side-by-Side Content Performance</h3><p class="rb-caption">Posts were published during ${esc(d.window.label)}; engagement counts were captured later. These four panels each use their own scale, so compare only within a panel. Accounts with fewer than five eligible posts are flagged. All values are observed, not modeled.</p><div class="rb-metric-grid">${panels}</div></section>`;
+}
+function rbComparisonAnalysis(d){
+ if(d.type!=='comparison')return '';
+ const aligned=aqCommonFollower(d.rows,d.window);
+ const sizeRows=d.rows.filter(m=>m.end!==null).sort((a,b)=>b.end-a.end);
+ let html=`<h3 class="rb-chart-title">Head-to-Head Comparison</h3><p class="rb-caption">Account size and audience-adjusted post performance are separate measures. Relative performance does not equal the percentage of people who viewed a post.</p>`;
+ if(sizeRows.length>=2){const lead=sizeRows[0],runner=sizeRows[1];html+=`<div class="rb-comparison-callout"><strong>Largest tracked audience</strong><span>${esc(lead.a.name)} · ${fmt(lead.end)} followers at its last available reading in this period</span><small>${fmt(lead.end-runner.end)} more than ${esc(runner.a.name)} (next-largest), using each account’s latest available date. Check observation dates below.</small></div>`}
+ if(aligned.ok){
+  html+=`<div class="rb-comparison-callout"><strong>Comparable follower-growth interval</strong><span>${esc(rbDate(aligned.from))} – ${esc(rbDate(aligned.to))}</span><small>Nearest real readings within 36 hours of common start and end. No missing readings are fabricated; times may differ by ${Math.ceil(Math.max(aligned.startSpreadHours,aligned.endSpreadHours))} hours.</small></div>`;
+  html+=`<div class="rb-table-scroller"><table class="rb-report-table rb-compare-table"><thead><tr><th>Account</th><th>Starting Followers</th><th>Ending Followers</th><th>Net Change</th><th>Relative Growth</th><th>Per Day</th></tr></thead><tbody>${aligned.rows.map(r=>`<tr><td>${esc(r.a.name)}<small>${esc(rbDate(r.start.time))} – ${esc(rbDate(r.end.time))}</small></td><td>${fmt(r.start.followers)}</td><td>${fmt(r.end.followers)}</td><td>${rbSigned(r.gain)}</td><td>${rbPct(r.pct)}</td><td>${rbDaily(r.perDay)}</td></tr>`).join('')}</tbody></table></div>`;
+  const growth=aligned.rows.filter(r=>r.pct!==null).sort((a,b)=>b.pct-a.pct),gain=aligned.rows.sort((a,b)=>b.gain-a.gain);
+  if(growth.length){html+=`<div class="rb-comparison-insights"><p><b>Fastest relative follower growth:</b> ${esc(growth[0].a.name)} (${rbPct(growth[0].pct)}) over the shared observation period.</p><p><b>Largest follower increase:</b> ${esc(gain[0].a.name)} (${rbSigned(gain[0].gain)} followers) over that same period.</p></div>`}
+ }else html+=`<div class="rb-nohistory"><b>Direct follower growth comparison unavailable.</b> ${esc(aligned.reason)} The account-by-account table below still reports each account’s own observed results, but these should not be interpreted as a synchronized race.</div>`;
+ if(typeof postState==='undefined'||!postState.snapshotsAvailable)return html+'<div class="rb-nohistory">Post snapshots could not be loaded; audience-adjusted comparisons cannot be verified.</div>';
+ const summaries=rbPeriodPostSummaries(d),withLikes=summaries.filter(s=>s.likeN>=5&&s.likeRate!==null&&rbPostCoverage(s.a,d).complete),withPosts=summaries.filter(s=>s.total>0);
+ html+=`<h3 class="rb-chart-title">Post-Performance Comparison · Selected Period</h3><p class="rb-caption">Each row summarizes <b>posts published during ${esc(d.window.label)}</b>. Likes and comments are the latest recorded counters; the follower denominator is current (not historical). Eligibility counts exclude missing metrics. Averages are per post, not totals. Observed Interaction Rate uses only posts with both counters available, and shows the paired sample size.</p>`;
+ if(!withPosts.length)return html+'<div class="rb-nohistory">No recorded posts in this reporting period for the selected accounts.</div>';
+ html+=`<div class="rb-table-scroller"><table class="rb-report-table rb-compare-table"><thead><tr><th>Account</th><th>Recorded Posts</th><th>Avg. Likes</th><th>Median Likes</th><th>Avg. Comments</th><th>Like Rate</th><th>Observed Interaction Rate*</th></tr></thead><tbody>${summaries.map(s=>`<tr><td>${esc(s.a.name)}<small>@${esc(s.a.handle)}</small></td><td>${fmt(s.total)}</td><td>${s.avgLikes===null?'—':cpDecimal(s.avgLikes)}<small>n=${s.likeN}${s.likeN<5?' · Small sample':''}</small></td><td>${s.medianLikes===null?'—':cpDecimal(s.medianLikes)}</td><td>${s.avgComments===null?'—':cpDecimal(s.avgComments)}<small>n=${s.commentN}</small></td><td>${aqPercent(s.likeRate)}</td><td>${aqPercent(s.engagement)}<small>paired n=${s.interactionN}</small></td></tr>`).join('')}</tbody></table></div>`;
+ if(withLikes.length>=2){const ordered=withLikes.sort((a,b)=>b.likeRate-a.likeRate),p=ordered[0],runner=ordered[1];html+=`<div class="rb-comparison-callout"><strong>Highest audience-adjusted Like Rate</strong><span>${esc(p.a.name)} · ${aqPercent(p.likeRate)}</span><small>${(p.likeRate-runner.likeRate).toFixed(2)} percentage points ahead of ${esc(runner.a.name)} among accounts with at least five recorded like counts. This is likes relative to current followers, not views.</small></div>`}
+ else html+='<p class="rb-caption">Insufficient eligible sample sizes to name a fair Like Rate leader (at least two accounts need five posts with visible likes).</p>';
+ const activity=summaries.filter(r=>r.total>0).sort((a,b)=>b.total-a.total);
+ if(activity.length>=2)html+=`<p class="rb-caption"><b>Most recorded posts in the selected period (inventory may be incomplete):</b> ${esc(activity[0].a.name)} (${fmt(activity[0].total)} recorded). A higher posting count does not establish higher per-post engagement.</p>`;
+ return html;
+}
+function rbExecutiveSummary(d){
+ const obs=d.rows.filter(m=>m.end!==null),posts=(typeof postState!=='undefined'&&postState.snapshotsAvailable)?rbPeriodPostSummaries(d):[];
+ const aligned=d.type==='comparison'?aqCommonFollower(d.rows,d.window):null;
+ const largest=obs.slice().sort((a,b)=>b.end-a.end);
+ const hasSameEnd=largest.length>1&&Math.max(...largest.map(m=>m.r.at(-1).time))-Math.min(...largest.map(m=>m.r.at(-1).time))<=1.5*AQ_DAY;
+ const eligible=posts.filter(s=>s.likeN>=5&&s.likeRate!==null&&rbPostCoverage(s.a,d).complete);
+ const likeWinner=eligible.slice().sort((a,b)=>b.medianLikes-a.medianLikes)[0];
+ const rateWinner=eligible.slice().sort((a,b)=>b.likeRate-a.likeRate)[0];
+ const notes=[];
+ if(d.type==='comparison'){
+  if(hasSameEnd)notes.push(`<b>Audience size:</b> ${esc(largest[0].a.name)} has the largest observed audience (${fmt(largest[0].end)}), measured within 36 hours of the other accounts.`);
+  else notes.push('<b>Audience size:</b> account snapshots end on different dates; the report shows their individual last recorded totals without declaring a synchronized winner.');
+  if(aligned?.ok){const g=aligned.rows.slice().sort((a,b)=>b.gain-a.gain)[0],r=aligned.rows.filter(x=>x.pct!==null).slice().sort((a,b)=>b.pct-a.pct)[0];
+   notes.push(`<b>Shared-period follower change:</b> ${esc(g.a.name)} had the largest absolute gain (${rbSigned(g.gain)}), ${esc(rbDate(aligned.from))} to ${esc(rbDate(aligned.to))}. ${r?`${esc(r.a.name)} had the highest relative growth (${rbPct(r.pct)}).`:''}`);
+  }else notes.push(`<b>Follower growth:</b> no directly comparable shared interval (${esc(aligned?.reason||'insufficient readings')}).`);
+  if(likeWinner)notes.push(`<b>Typical likes:</b> ${esc(likeWinner.a.name)} has the highest recorded median (${cpDecimal(likeWinner.medianLikes)} likes/post) among accounts with verified recent coverage and at least five visible-like posts.`);
+  if(rateWinner)notes.push(`<b>Audience-adjusted Like Rate:</b> ${esc(rateWinner.a.name)} leads the eligible sample at ${aqPercent(rateWinner.likeRate)}, using current followers—not historical reach.`);
+  if(eligible.length<2)notes.push('<b>Content comparison:</b> too few accounts have both verified period coverage and five visible-like posts for a fair ranked conclusion.');
+ }else if(d.type==='individual'){
+  const m=d.rows[0],s=posts[0];
+  notes.push(`<b>Follower history:</b> ${m.coverage?`${rbSigned(m.gain)} observed net change (${rbPct(m.pct)}) from ${esc(m.first)} to ${esc(m.last)}.`:'Fewer than two readings in the selected period; growth is unavailable.'}`);
+  if(s)notes.push(`<b>Recorded content:</b> ${fmt(s.total)} posts, ${s.likeN} with visible likes${s.medianLikes===null?'':`; median ${cpDecimal(s.medianLikes)} recorded likes`}. ${esc(aqCoverageWarning(s)||'All observed posts have both public counters.')}`);
+ }else{
+  notes.push(`<b>Scope:</b> ${d.rows.length} accounts included; ${obs.length} have follower readings during this period.`);
+  if(posts.length)notes.push(`<b>Content:</b> ${fmt(posts.reduce((sum,s)=>sum+s.total,0))} recorded posts across the selected accounts; historical inventories may be incomplete.`);
+  if(!obs.length)notes.push('<b>Growth:</b> no follower observations are available for this period.');
+ }
+ notes.push('<b>Interpretation:</b> latest-recorded public interactions are not views, reach, or interactions earned during the original publication period. Partial data and small samples limit ranking claims.');
+ return `<section class="rb-executive"><p class="rb-overline">AT A GLANCE</p><h3>Executive Summary</h3>${notes.map(n=>`<p>${n}</p>`).join('')}</section>`;
+}
+function rbDetailedHTML(d){const typeTitle=({individual:'Account Performance Report',comparison:'Account Comparison Report',leaderboard:'Leaderboard Analysis Report'}[d.type]),all=d.rows,available=all.filter(x=>x.end!==null),gains=all.filter(x=>x.gain!==null),top=available.toSorted((a,b)=>b.end-a.end)[0],fastest=gains.toSorted((a,b)=>b.gain-a.gain)[0],total=available.reduce((x,m)=>x+m.end,0),histStart=available.length?Math.min(...available.map(m=>m.r[0].time)):null,histEnd=available.length?Math.max(...available.map(m=>m.r.at(-1).time)):null;
+ const intro=d.type==='individual'?`Performance summary for ${esc(all[0].a.name)}.`:d.type==='comparison'?`Side-by-side assessment of ${all.length} selected accounts.`:`Category-wide analysis across ${all.length} matching accounts.`;
+ const coverAccounts=d.type==='individual'
+  ?`<p class="rb-cover-account-heading">FEATURED ACCOUNT</p><div class="rb-cover-account"><strong>${esc(all[0].a.name)}</strong><span>@${esc(all[0].a.handle)}</span></div>`
+  :d.type==='comparison'
+   ?`<p class="rb-cover-account-heading">ACCOUNTS COMPARED (${all.length})</p><div class="rb-cover-account-list">${all.map((m,i)=>`<div><b>${i+1}. ${esc(m.a.name)}</b><span>@${esc(m.a.handle)}</span></div>`).join('')}</div>`
+   :`<p class="rb-cover-account-heading">LEADERBOARD COVERAGE</p><div class="rb-cover-account"><strong>${rb('rbIncludeOfficial').checked?'Independent + Official LU Accounts':'Independent Accounts'}</strong><span>${all.length} tracked account${all.length===1?'':'s'} · Accounts not classified as official included</span></div><div class="rb-cover-list-preview">${esc(all.slice(0,5).map(m=>m.a.name).join(' · '))}${all.length>5?` · +${all.length-5} more in report`:''}</div>`;
+ const heads=`<div class="rb-document-cover"><div class="rb-cover-brand"><img src="pulse-bee-outline.png" alt="Biberty Bee logo"><span>BIBERTY ANALYTICS</span></div><div class="rb-cover-rule"></div><p class="rb-overline">CAMPUS INSTAGRAM ANALYTICS</p><h1>${esc(typeTitle)}</h1><p class="rb-cover-sub">${esc(d.window.label)}</p><p>${intro}</p>${coverAccounts}<div class="rb-cover-pill">RECORDED PUBLIC METRICS</div><div class="rb-cover-foot">Fueled by The Biberty Bee <span>Premium Fake News. Real Numbers.</span></div></div>`;
+ const postSummary=typeof postState!=='undefined'&&postState.snapshotsAvailable?rbPeriodPostSummaries(d):[];
+ const postCount=postSummary.reduce((sum,s)=>sum+s.total,0),qual=postSummary.filter(s=>s.likeN>=5&&s.likeRate!==null&&rbPostCoverage(s.a,d).complete).sort((a,b)=>b.likeRate-a.likeRate);
+ const kpis=d.type==='individual'?[['Last Recorded Followers',all[0].end===null?'—':fmt(all[0].end)],['Recorded Follower Gain',rbSigned(all[0].gain)],['Observed Growth',rbPct(all[0].pct)],['Posts in Selected Period',postSummary.length?String(postCount):'—']]
+ :[['Accounts Compared',String(all.length)],['With Follower Readings',String(available.length)],['Posts Recorded in Period',postSummary.length?fmt(postCount):'—'],['Top Like Rate (n≥5)',qual.length?aqPercent(qual[0].likeRate):'—']];
+ let narrative='';if(d.type==='individual'){let m=all[0];narrative=`<div class="rb-textpanel"><h3>${esc(m.a.name)} <span>@${esc(m.a.handle)}</span></h3><p>${m.coverage?`Between ${esc(m.first)} and ${esc(m.last)}, the account ${m.gain>=0?'gained':'lost'} ${fmt(Math.abs(m.gain))} followers (${rbPct(m.pct)}).`:'Growth cannot be calculated: fewer than two readings exist within this period.'}</p><p>${m.crossed.length?`Confirmed milestones: ${esc(m.crossed.map(x=>`${x.label} (${rbDate(x.date)})`).join('; '))}.`:'No new follower milestones can be confirmed during the selected reporting period.'}</p></div>`}else{narrative=`<div class="rb-textpanel"><h3>Performance Highlights</h3><p>${top?`Largest measured account: <b>${esc(top.a.name)}</b> with ${fmt(top.end)} followers at its latest recorded point in the period.`:'No accounts have recorded follower counts for the selected period.'}</p><p>${fastest?`Largest recorded follower gain: <b>${esc(fastest.a.name)}</b> (${rbSigned(fastest.gain)}).`:'There are not enough readings to compare growth.'}</p></div>`}
+ if(d.type==='comparison'){
+  narrative='<div class="rb-textpanel"><h3>Comparing Like for Like</h3><p>Follower totals, audience growth, and typical interactions answer different questions. The shared-window growth table below is the only basis for direct follower-growth rankings. Other comparisons must be read with their individual sample sizes and coverage.</p></div>';
+
+ }
+ const contentPerformance=typeof postState!=='undefined'&&postState.snapshotsAvailable
+  ?`<p class="rb-caption">Historical content calculations are based on unique posts in your chosen reporting period. Summary figures do not silently switch to a 30-day window.</p>`
+  :`<div class="rb-nohistory">Detailed post snapshots are unavailable. Content comparisons cannot be verified, so no substitute figures are shown.</div>`;
+ const coverage=`<div class="rb-methodology"><h3>Data Coverage & Methodology</h3><p>Source: The Biberty Bee’s recorded public follower measurements and post snapshots. Period: ${esc(d.window.label)}. ${histStart!==null?`Actual available readings in this selection: ${rbDate(histStart)} to ${rbDate(histEnd)}.`:'No readings are available in the selected period.'}</p><p>Days observed equals elapsed time between the first and last available snapshots for each account; average daily gain divides net gain by days observed. Different accounts may have different observation windows. Follower gains equal the last recorded count minus the first recorded count <b>within the selected range</b>. Growth rate uses the first count as denominator. Milestone crossings are confirmed only when consecutive recorded readings move from below a threshold to at or above it. Missing earlier history can conceal previous milestones. End-of-period totals use the last measurement in the period; no missing measurements are interpolated.</p><p>Follower statistics are recorded public counts. Direct follower-growth comparisons use overlapping measurement windows or report that they cannot be established. Post metrics are latest recorded public counters on posts published in the selected period: they are not engagement measured during that year, impressions, reach, view counts, or Instagram Insights. Historical post inventory is unverified unless coverage has been independently confirmed for that exact period; weekly completeness applies only to recent 30-day data. Like Rate uses mean visible likes divided by <b>current</b> followers. Observed Interaction Rate averages (likes + comments) only on posts with both measurements present before dividing by current followers. Individual counters can have different observation timestamps. Rates are approximate ratios against current audience size, not historical reach. Statistics represent tracked snapshots and may omit changes between readings.</p></div>`;
+ return `<article class="rb-document${d.appendixMode!=='none'?' rb-document-with-appendix':''}">${heads}<div class="rb-document-content"><div class="rb-content-top"><p class="rb-overline">REPORT SUMMARY</p><h2>${esc(typeTitle)}</h2><p>${esc(d.window.label)} · Generated ${esc(d.created)} · ${postState?.asOf?'Posts recorded through '+esc(rbDate(postState.asOf)):'Post data date unavailable'}</p></div><div class="rb-kpis">${kpis.map(([k,v])=>`<div><small>${esc(k)}</small><strong>${esc(v)}</strong></div>`).join('')}</div>${rbExecutiveSummary(d)}${narrative}${rbComparisonAnalysis(d)}${rbComparisonVisuals(d)}<section class="rb-follower-section"><h3 class="rb-chart-title">Follower History</h3><p class="rb-caption">Chart account selection changes visuals only; summary statistics and tables still include every account in this report.</p>${rbChart(rbChartRows(d))}</section><h3 class="rb-chart-title">Account Breakdown</h3>${rbTable(all)}${rbContentCards(d)}${rbPostRateChart(d)}${contentPerformance}${rbHistoricalContent(d)}<h3 class="rb-chart-title">Typical Likes per Post by Period</h3><p class="rb-caption">Separate account charts summarize posts published during the selected reporting period. All likes use their latest recorded values.</p>${rbLikesChart(d)}<h3 class="rb-chart-title">Post Performance Highlights</h3>${rbPostHighlights(d)}${d.appendixMode!=='none'?`<section class="rb-full-appendix"><h3 class="rb-chart-title">Post-by-Post Appendix · Compact</h3>${rbPostBreakdown(d)}</section>`:''}${coverage}<footer class="rb-document-footer">THE BIBERTY BEE · PREMIUM FAKE NEWS. REAL NUMBERS. <span>RECORDED PUBLIC METRICS</span></footer></div></article>`;
+}
+function rbInfographicDraw(d){const cv=rb('rbCanvas'),c=cv.getContext('2d'),w=cv.width,h=cv.height;c.clearRect(0,0,w,h);let g=c.createLinearGradient(0,0,w,h);g.addColorStop(0,'#111b48');g.addColorStop(.6,'#273a71');g.addColorStop(1,'#101630');c.fillStyle=g;c.fillRect(0,0,w,h);
+ let glow=c.createRadialGradient(1050,240,0,1050,240,550);glow.addColorStop(0,'#bf6c6c44');glow.addColorStop(1,'#bf6c6c00');c.fillStyle=glow;c.fillRect(500,0,700,760);
+ // The exact outline derived from the uploaded Biberty Bee symbol, in the report background.
+ if(rbBeeOutline.complete&&rbBeeOutline.naturalWidth){c.save();c.globalAlpha=.12;c.drawImage(rbBeeOutline,800,45,490,495);c.restore()}
+ c.fillStyle='#b7342c';c.fillRect(0,0,1200,18);c.fillRect(0,1534,1200,16);function t(x,y,str,size=38,color='#fff',weight=700,align='left'){c.fillStyle=color;c.font=`${weight} ${size}px Arial,sans-serif`;c.textAlign=align;c.fillText(String(str),x,y)}function panel(x,y,width,height){c.fillStyle='#ffffff16';c.beginPath();c.roundRect(x,y,width,height,22);c.fill();c.strokeStyle='#ffffff26';c.lineWidth=2;c.stroke()}
+ t(72,108,'BIBERTY ANALYTICS',34,'#d9e2ff',800);c.fillStyle='#d65b50';c.fillRect(72,141,180,7);t(72,226,'CAMPUS INSTAGRAM ANALYTICS',25,'#e4b3ac',700);
+ const title=({individual:'Account Performance',comparison:'Account Comparison',leaderboard:'Leaderboard Analysis'}[d.type]);t(72,315,title,67,'#fff',800);t(72,374,d.window.label,31,'#d2daf3',500);
+ const measured=d.rows.filter(r=>r.end!==null),gainers=d.rows.filter(r=>r.gain!==null),top=measured.toSorted((a,b)=>b.end-a.end)[0];let primary=d.type==='individual'?d.rows[0]:top;
+ if(d.type==='individual'){
+  if(primary){t(72,472,primary.a.name.slice(0,32),43,'#fff',800);t(72,515,'@'+primary.a.handle,26,'#d3bbbc',500)}
+  else t(72,465,'No readings available for this period',31,'#d3bbbc',500);
+ }else if(d.type==='comparison'){
+  const names=d.rows.map(m=>m.a.name);
+  t(72,441,`${names.length} ACCOUNTS COMPARED`,22,'#d3bbbc',800);
+  const label=names.join('  •  ');
+  let sz=31;while(sz>20){c.font=`700 ${sz}px Arial,sans-serif`;if(c.measureText(label).width<1045)break;sz-=1}
+  if(sz>=22)t(72,496,label,sz,'#fff',700);
+  else{const mid=Math.ceil(names.length/2);t(72,475,names.slice(0,mid).join('  •  ').slice(0,62),27,'#fff',700);t(72,521,names.slice(mid).join('  •  ').slice(0,62),27,'#fff',700)}
+ }else{
+  t(72,462,rb('rbIncludeOfficial').checked?'Independent + Official LU':'Independent Accounts',37,'#fff',800);
+  t(72,509,`${d.rows.length} tracked accounts · unclassified accounts included`,25,'#d3bbbc',500);
+ }
+ const summary=(typeof postState!=='undefined'&&postState.snapshotsAvailable)?rbPeriodPostSummaries(d):[];
+ const eligibleRate=summary.filter(r=>r.likeN>=5&&r.likeRate!==null).sort((a,b)=>b.likeRate-a.likeRate),postCount=summary.reduce((n,r)=>n+r.total,0);
+ const metrics=d.type==='individual'?[['FOLLOWERS',primary&&primary.end!==null?fmt(primary.end):'—'],['RECORDED GAIN',rbSigned(primary?.gain??null)],['OBSERVED GROWTH',rbPct(primary?.pct??null)],['POSTS IN PERIOD',summary.length?fmt(postCount):'—']]
+ :[['ACCOUNTS',String(d.rows.length)],['LARGEST FOLLOWING',top?fmt(top.end):'—'],['RECORDED POSTS',summary.length?fmt(postCount):'—'],['TOP ELIGIBLE LIKE RATE',eligibleRate.length?aqPercent(eligibleRate[0].likeRate):'—']];
+ metrics.forEach(([label,value],i)=>{const x=72+(i%2)*545,y=584+Math.floor(i/2)*235;panel(x,y,511,205);t(x+27,y+57,label,23,'#d6ddf0',800);let fontSize=String(value).length>13?32:String(value).length>8?43:62;t(x+27,y+151,value,fontSize,'#fff',800)});
+ t(72,1110,d.type==='individual'?'FOLLOWER HISTORY':'PERFORMANCE COMPARISON',29,'#d6ddf0',800);
+ let graphed=d.rows.filter(r=>r.r.length>=2).slice(0,5),vals=graphed.flatMap(m=>m.r.map(p=>p.followers)),times=graphed.flatMap(m=>m.r.map(p=>p.time));if(graphed.length){let min=Math.min(...vals),max=Math.max(...vals),t0=Math.min(...times),t1=Math.max(...times);if(min===max){min--;max++}if(t0===t1)t1+=86400000;
+ const x0=95,y0=1173,ww=1005,hh=222;c.strokeStyle='#ffffff35';c.lineWidth=1;for(let i=0;i<4;i++){c.beginPath();c.moveTo(x0,y0+i*hh/3);c.lineTo(x0+ww,y0+i*hh/3);c.stroke()};graphed.forEach((m,i)=>{c.strokeStyle=['#faad9d','#b9dbfa','#f2d39c','#b8e1c2','#d5b7ff'][i];c.lineWidth=7;c.lineJoin='round';c.beginPath();m.r.forEach((p,j)=>{let x=x0+ww*(p.time-t0)/(t1-t0),y=y0+hh*(max-p.followers)/(max-min);j?c.lineTo(x,y):c.moveTo(x,y)});c.stroke()})}
+ else t(72,1260,'Insufficient historical data to chart.',32,'#c8d3e9',500);
+ const label=d.type==='individual'?'1 ACCOUNT':d.type==='comparison'?`${d.rows.length} ACCOUNTS COMPARED`:`${d.rows.length} ACCOUNTS ANALYZED`;
+ const cpSummaries=(typeof postState!=='undefined'&&postState.snapshotsAvailable)?rbPeriodPostSummaries(d):[];
+ if(cpSummaries.length){
+  const count=cpSummaries.reduce((sum,p)=>sum+p.total,0);t(72,1414,`POSTS IN THIS PERIOD: ${fmt(count)} RECORDED`,20,'#d7e3f6',650);
+  if(d.type==='comparison'){
+   const n=cpSummaries.filter(p=>p.likeN>=5&&p.likeRate!==null).sort((a,b)=>b.likeRate-a.likeRate),top=n[0];
+   t(72,1450,top?`TOP ELIGIBLE LIKE RATE: ${top.a.name.slice(0,26)} · ${top.likeRate.toFixed(2)}%`:'NOT ENOUGH POSTS TO RANK LIKE RATE FAIRLY',18,'#d7e3f6',600);
+  }
+ }else t(72,1414,'Post analytics unavailable for this period.',20,'#d7e3f6',500);t(72,1480,label,27,'#d7e3f6',700);t(1128,1480,'RECORDED PUBLIC METRICS',23,'#dfbcc0',700,'right');
+ return cv}
+document.querySelectorAll('[data-builder-step]').forEach(button=>button.addEventListener('click',()=>document.getElementById(button.dataset.builderStep)?.scrollIntoView({behavior:'smooth',block:'start'})));
+function rbRender(){const error=rbValidate();if(error){rb('rbStatus').textContent=error;return}rbLast=rbDataset();rb('rbPlaceholder').hidden=true;const detailed=rbLast.format==='detailed';rb('rbDetailed').hidden=!detailed;rb('rbInfographic').hidden=detailed;rb('rbPrint').disabled=false;rb('rbPNG').disabled=detailed;if(detailed)rb('rbDetailed').innerHTML=rbDetailedHTML(rbLast);else rbInfographicDraw(rbLast);rb('rbStatus').textContent=`Ready: ${rbLast.rows.length} account${rbLast.rows.length===1?'':'s'} · ${rbLast.window.label}. ${rbLast.rows.every(m=>!m.coverage)?'Historical growth is unavailable for this period.':''}`;rbHeadline();rb('rbPreviewType').textContent+=` · ${rbLast.window.label}`;rb('rbPlaceholder').closest('.builder-output').scrollIntoView({behavior:'smooth',block:'start'})}
+function rbSavePNG(){if(!rbLast||rbLast.format!=='summary')return;const a=document.createElement('a');a.href=rb('rbCanvas').toDataURL('image/png');a.download=`Biberty-${rbLast.type}-summary.png`;document.body.appendChild(a);a.click();a.remove()}
+function rbPrint(){
+ if(!rbLast){rb('rbStatus').textContent='Generate a preview first.';return}
+ // Printing a Wix embed can target the parent editor rather than the dashboard iframe.
+ // Open a standalone print document instead. Do not inherit the legacy global print CSS.
+ const win=window.open('','_blank');
+ if(!win){rb('rbStatus').textContent='Your browser blocked the report tab. Allow pop-ups for this site and try again.';return}
+ const cssURL=new URL('report-builder.css',document.baseURI).href;
+ const baseURL=new URL('.',document.baseURI).href;
+ const reportHTML=rbLast.format==='detailed'?rb('rbDetailed').innerHTML:
+  `<div class="rb-print-summary"><img alt="Biberty Analytics summary" src="${rb('rbCanvas').toDataURL('image/png')}"></div>`;
+ const title='The Biberty Bee — '+(rbLast.type==='individual'?'Account Performance':rbLast.type==='comparison'?'Account Comparison':'Leaderboard')+' Report';
+ win.document.open();
+ win.document.write(`<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${title}</title><base href="${baseURL}"><link rel="stylesheet" href="${cssURL}"><style>
+ @page{size:A4;margin:12mm}
+ *,*:before,*:after{box-sizing:border-box}
+ html,body{margin:0;padding:0;background:#e6e9f1;color:#172451;font:14px/1.5 Arial,sans-serif}
+ .print-toolbar{position:sticky;top:0;z-index:10;background:#101a50;color:white;padding:13px 24px;display:flex;justify-content:space-between;align-items:center;gap:12px;font:13px Arial,sans-serif}
+ .print-toolbar button{border:0;background:#fff;color:#101a50;padding:10px 18px;border-radius:5px;font-weight:700;cursor:pointer}
+ .print-body{max-width:210mm;background:white;margin:18px auto;box-shadow:0 8px 35px #101a5028}
+ .rb-document{box-shadow:none}.rb-document-cover{min-height:297mm;break-after:page;page-break-after:always;padding:21mm 16mm!important;print-color-adjust:exact;-webkit-print-color-adjust:exact}
+ .rb-document-content{padding:12mm}.rb-print-summary{padding:0}.rb-print-summary img{display:block;width:100%;height:auto;max-height:260mm;object-fit:contain}
+ .rb-document,.rb-document-content,.rb-table-scroller{min-width:0!important;max-width:100%!important;box-sizing:border-box}
+ .rb-report-table,.rb-content-table{table-layout:fixed!important;width:100%!important;min-width:0!important;max-width:100%!important;border-collapse:collapse}
+ .rb-report-table th,.rb-report-table td{overflow-wrap:anywhere!important;white-space:normal!important;box-sizing:border-box!important;vertical-align:top;padding:6px 4px!important;font-size:9px!important;line-height:1.4}
+ .rb-report-table th:first-child,.rb-report-table td:first-child{width:19%}
+ .rb-content-table th:first-child,.rb-content-table td:first-child{width:18%}
+ .rb-content-table th:last-child,.rb-content-table td:last-child{width:24%}
+ .rb-table-scroller{overflow:visible!important;max-height:none!important;width:100%!important;min-width:0!important}
+ @media print{
+  @page{size:A4;margin:0}
+  html,body{margin:0!important;padding:0!important;background:#fff!important;print-color-adjust:exact;-webkit-print-color-adjust:exact}
+  .print-toolbar{display:none!important}
+  .print-body{box-shadow:none!important;max-width:none!important;width:210mm!important;margin:0!important;padding:0!important}
+  .rb-document{width:210mm!important;margin:0!important;padding:0!important;box-shadow:none!important}
+  .rb-document-cover{width:210mm!important;height:297mm!important;min-height:297mm!important;max-height:297mm!important;margin:0!important;padding:21mm 16mm!important;box-sizing:border-box!important;break-after:page!important;page-break-after:always!important;print-color-adjust:exact!important;-webkit-print-color-adjust:exact!important}
+  .rb-document-content{padding:11mm 14mm!important;box-sizing:border-box!important;-webkit-box-decoration-break:clone;box-decoration-break:clone}
+  .rb-report-table tr,.rb-textpanel,.rb-kpis,.rb-compact-group h4{break-inside:avoid}
+  .rb-follower-section{break-inside:avoid!important;page-break-inside:avoid!important}
+  .rb-follower-section .rb-svg{width:100%!important;max-height:95mm!important;height:auto!important}
+  .rb-appendix-table{break-inside:auto!important}.rb-appendix-table tr{break-inside:avoid!important}
+  .rb-print-summary img{width:210mm!important;max-height:297mm!important;object-fit:contain}
+  .rb-likes-chart,.rb-metrics-section,.rb-full-appendix,.rb-highlight-panel{break-inside:auto!important}
+  .rb-executive{break-inside:avoid}
+ }
+ @page{size:A4;margin:0}
+ </style></head><body><div class="print-toolbar"><span>Biberty Analytics Report <small style="font-size:10px;opacity:.8">· A4 full bleed · disable browser headers if shown</small></span><button type="button" onclick="window.print()">Print / Save as PDF</button></div><main class="print-body">${reportHTML}</main></body></html>`);
+ win.document.close();win.focus();
+ rb('rbStatus').textContent='Opened a full-size printable report in a new tab. Click Print / Save as PDF there.';
+}
+function initReportBuilder(){if(rbReady){rbPicker();return}rbReady=true;const latest=state.history.length?Math.max(...state.history.map(p=>p.time)):Date.now(),earliest=state.history.length?Math.min(...state.history.map(p=>p.time)):latest,yr=schoolYearOf(latest);
+ rb('rbPeriod').innerHTML=`<option value="ytd">School Year to Date (${yr}–${String(yr+1).slice(-2)})</option>`+Array.from({length:7},(_,i)=>{const y=yr-i;return `<option value="${y}">${y}–${String(y+1).slice(-2)} Academic Year</option>`}).join('')+'<option value="multi">Multiple Academic Years</option><option value="custom">Custom Date Range</option><option value="all">All Available History</option>';
+ for(const id of ['rbFromYear','rbToYear'])rb(id).innerHTML=Array.from({length:7},(_,i)=>{const y=yr-i;return `<option value="${y}">${y}–${String(y+1).slice(-2)}</option>`}).join('');rb('rbFromYear').value=String(yr-1);rb('rbToYear').value=String(yr);
+ rb('rbStart').value=new Date(earliest).toISOString().slice(0,10);rb('rbEnd').value=new Date(latest).toISOString().slice(0,10);
+ 
+ const bb=state.accounts.find(a=>a.handle==='thebibertybee')||state.accounts[0];if(bb)rbSelected.add(bb.handle);
+ rb('rbAccountList').addEventListener('change',e=>{const t=e.target;if(t.tagName!=='INPUT')return;if(t.checked){if(rbType()==='individual')rbSelected.clear();rbSelected.add(t.value)}else rbSelected.delete(t.value);rbPicker();rbUpdateChartPicker();rb('rbStatus').textContent='Selections changed. Generate the preview to update your report.'});
+ rb('rbSearch').addEventListener('input',rbPicker);
+ rb('rbIncludeOfficial').addEventListener('change',()=>{rbUpdateChartPicker();rb('rbStatus').textContent='Account scope changed. Generate the preview to update your report.'});
+ rb('rbChartSearch').addEventListener('input',rbUpdateChartPicker);
+ rb('rbChartReset').addEventListener('click',()=>{rbChartCustomized=false;rbChartSelected.clear();rbUpdateChartPicker()});
+ rb('rbChartList').addEventListener('change',e=>{const input=e.target;if(input.tagName!=='INPUT')return;if(!rbChartCustomized){rbChartCustomized=true;rbChartSelected.clear()}if(input.checked){if(rbChartSelected.size>=6){input.checked=false;return}rbChartSelected.add(input.value)}else rbChartSelected.delete(input.value);rbUpdateChartPicker()});document.querySelectorAll('input[name="rbType"]').forEach(x=>x.addEventListener('change',()=>{if(x.checked&&x.value==='individual'&&rbSelected.size>1){rbSelected=new Set([rbSelected.values().next().value])}rbPicker();rbHeadline()}));document.querySelectorAll('input[name="rbFormat"]').forEach(x=>x.addEventListener('change',()=>{rbHeadline();rbUpdateChartPicker()}));rb('rbPeriod').addEventListener('change',()=>{rbRefreshPeriod();rbUpdateChartPicker()});
+ rb('rbAppendixMode').addEventListener('change',()=>{if(rbLast&&rbLast.format==='detailed')rb('rbStatus').textContent='Appendix layout changed. Generate the preview again to apply it.'});rb('rbGenerate').onclick=rbRender;rb('rbPrint').onclick=rbPrint;rb('rbPNG').onclick=rbSavePNG;window.addEventListener('afterprint',()=>document.body.classList.remove('rb-print-active'));
+ rbRefreshPeriod();rbHeadline();rbPicker();rbUpdateChartPicker();}
