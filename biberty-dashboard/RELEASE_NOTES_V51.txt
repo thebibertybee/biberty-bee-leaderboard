@@ -1,8 +1,0 @@
-Biberty Analytics Version 51 — The Pulse oversized bee watermark
-
-- Enlarged the EXISTING official bee outline watermark without modifying its artwork.
-- Positioned it partly beyond the right edge of the navy hero, which clips the overflow.
-- Tuned size, offset, and opacity separately for desktop, tablet, and mobile.
-- Preserved the permanent brick-red The Pulse navigation tab and all other Version 50 features.
-
-Deploy: Replace the biberty-dashboard folder in GitHub with this one.

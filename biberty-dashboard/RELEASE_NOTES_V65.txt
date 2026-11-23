@@ -1,5 +1,0 @@
-Biberty Analytics — Version 65: The Buzz
-
-- Renamed the editorial analytics front page from “The Pulse” to “The Buzz” in navigation (desktop/mobile), hero eyebrow, and browser page title.
-- Kept existing navigation identifiers and underlying code unchanged for compatibility.
-- Preserved Hot Posts and every feature from Version 64.
