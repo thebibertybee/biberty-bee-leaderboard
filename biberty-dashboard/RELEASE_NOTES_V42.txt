@@ -1,8 +1,0 @@
-Version 42 · Historical post performance and Instagram navigation
-
-- Like Rate = average likes per post / current follower count x 100. Sample counts displayed, including <5-post caution.
-- Top Posts calculated from Post Snapshots (not 30-day Top Posts feed); choose last 30 days, academic years, or all recorded posts, plus overall or one-per-account ranking.
-- Detailed report includes period-specific post metrics (average and median likes, average comments, Like Rate and estimated engagement) and existing post charts. Historical ratios use current followers, explicitly labeled.
-- Removed PUBLICLY TRACKED FOLLOWER DATA from recap footer.
-- Instagram links open in a new tab via direct user click, with pop-up blocked messaging. Wix/Instagram may still impose restrictions.
-- Live CSV feeds untouched; automatic historical updates will appear once Muse publishes them.
