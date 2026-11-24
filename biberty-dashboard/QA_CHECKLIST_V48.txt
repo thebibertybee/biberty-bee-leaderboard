@@ -1,0 +1,19 @@
+THE BIBERTY BEE / V48 QA CHECKLIST
+
+Verified offline against synthetic CSV data in headless Chromium:
+- Homepage 'The Pulse' loads and only displays recent synchronized achievement headlines (test included a staged lead change).
+- Content Performance Overview, Top Posts and Posting Activity buttons switch panels correctly.
+- Recap PNG download returns a native 1080 x 1920 image.
+- Recap 8-story ZIP contains 8 PNG files and passes ZIP CRC verification.
+- Multicolor recap theme draws without exceptions.
+- Comparison report prints full-bleed A4 navy cover, separates chart heading and chart as one group, and moves appendix methodology together.
+- Compact 25-per-account appendix contains 50 rows across two accounts with 90 historical posts each.
+- Mobile layouts tested with 320px and 390px viewports; no document-wide horizontal overflow.
+- Code syntax checks passed for all JavaScript files.
+
+REQUIRES LIVE DEPLOYMENT VERIFICATION:
+- Live Google Sheets CSV freshness and account matching.
+- Wix iframe sandbox popup and download permission; embedded buttons deliberately open the GitHub-hosted standalone dashboard.
+- Print header/footer and background settings in individual browsers (Chrome, Safari).
+- Instagram external profile and post links from Wix.
+- Responsiveness on actual iOS/Android devices and Wix's nested iframe.

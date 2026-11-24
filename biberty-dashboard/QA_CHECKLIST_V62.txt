@@ -1,0 +1,29 @@
+BIBERTY ANALYTICS V62 — QA RESULTS AND DEPLOYMENT CHECKLIST
+
+VERIFIED WITH CONTROLLED SAMPLE FEEDS
+[PASS] JavaScript syntax — app.js, analytics-quality.js, content-performance.js, report-builder.js
+[PASS] All seven dashboard views render without browser JavaScript exceptions.
+[PASS] 1365px desktop, 390px phone, and 320px narrow phone: no document-wide horizontal overflow.
+[PASS] Mobile section selector navigates to the correct content; browser URL section hash updates.
+[PASS] Pulse maintains approved V61 desktop bee artwork; narrow phone banner remains readable.
+[PASS] Explicit Include in Rankings=false excludes account from public rankings while preserving optional comparisons.
+[PASS] Official, Unofficial, and Unknown report affiliation filters are distinct.
+[PASS] Reset returns to Unofficial and Memes & Satire.
+[PASS] Recent weekly 'Complete' never qualifies historical 2024–25 report inventory as complete.
+[PASS] A recap with no follower history renders all eight slides without a crash.
+[PASS] Content Performance overview, posts, and activity selectors work.
+[PASS] Tapping a chart data point displays the recorded follower count.
+[PASS] Pulse account headline navigates to filtered account results.
+[PASS] Individual report preview generates and print popup contains complete report text.
+[PASS] Standalone PDF print test exports 5 pages with full-bleed navy cover and readable sections.
+[PASS] Story PNG download is a valid 1080x1920 PNG.
+[PASS] All-8 recap ZIP contains eight valid image files.
+
+LIMITATIONS / LIVE CHECKS
+[ ] Confirm Google Sheets responds with the real publicly shared tab data in GitHub Pages.
+[ ] Confirm Wix embedded page navigation and download/open-standalone behavior on published site.
+[ ] Confirm report print/export in the user's version of Chrome, especially comparison and full appendices.
+[ ] Check whether actual Muse historical data is fully backfilled before announcing annual awards.
+[ ] Test a few real renamed/uncategorized accounts to confirm metadata and inclusion flags are correct.
+
+Note: Sample accounts/follower/post counts in these QA tests are synthetic. The shipped website contains NO synthetic data.
