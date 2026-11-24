@@ -1,3 +1,0 @@
-Version 70 — Restored diagonal report cover gradient
-
-Reverted to the original 145-degree dark → blue → dark gradient structure, with slightly richer navy and blue colors. Applied identically to report preview and print. All other Version 68 behavior remains unchanged.
