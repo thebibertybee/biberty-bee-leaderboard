@@ -1,4 +1,0 @@
-Version 61 — Lowered approved monochrome bee.
-Pulse: desktop +46px, tablet +32px, mobile +23px vertically, same original artwork, size, horizontal position and opacity.
-Report cover: bee shifted down approximately 45px on desktop and proportionally on mobile/print.
-All other features remain as V60.

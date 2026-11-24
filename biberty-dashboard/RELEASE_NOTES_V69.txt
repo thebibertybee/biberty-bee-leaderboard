@@ -1,3 +1,0 @@
-Biberty Analytics Version 69
-
-Only change: report cover background now transitions midnight navy → brighter royal blue through the center → midnight navy at the bottom, including print/PDF. All layout, bee assets, and other analytics functionality remain as in Version 68.
