@@ -1,0 +1,11 @@
+Biberty Analytics – Version 56 (Bee polish)
+
+Changes in this version:
+- Added subtle shine, glow, and a slight tonal gradient treatment to the large full-color bee on report covers.
+- Added a soft ambient glow behind the cover bee for a more polished editorial look.
+- Gave The Pulse hero bee a matching polished treatment with a restrained glow and tonal lift.
+- Preserved the official bee artwork and proportions; changes are CSS-based only for easy future tuning.
+
+Notes:
+- This version builds on V55 branding changes.
+- If desired, the glow strength and shine can be increased or reduced later with simple CSS edits.

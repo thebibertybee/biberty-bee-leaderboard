@@ -1,0 +1,11 @@
+Biberty Analytics V64 — Hot Posts
+
+- Renamed Top Posts subview to Hot Posts.
+- Added last 7/14/30/90 days and previous complete calendar month, retaining academic years and all history.
+- Default shows last 14 days.
+- Most Liked/Most Commented and unique-account ranking are retained.
+- Added up to two recent post insights to The Pulse if post snapshots are fresh, linking to Content Performance.
+- Headlines explicitly describe current recorded counters on posts published in the period; no claim about likes earned during that period.
+- Existing name The Pulse remains unchanged.
+
+Caution: Latest recorded likes/comments are not historical-at-publication counts. The front page omits recent post headlines for stale data.

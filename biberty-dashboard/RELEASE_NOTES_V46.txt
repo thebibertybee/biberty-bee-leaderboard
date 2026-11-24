@@ -1,0 +1,1 @@
+V46: Replace default full post-by-post report section with Top 5 Posts (individual) and Top 1 per account (comparison / leaderboard). Optional Full Post Appendix checkbox, off by default, displays every recorded post. Summary statistics/charts still include all eligible posts.

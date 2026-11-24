@@ -1,0 +1,4 @@
+V71
+- Strengthened the report cover gradient while preserving the original diagonal direction and overall look.
+- Slightly richer mid-blue and slightly deeper navy endpoints.
+- Applied to both on-screen preview and print/PDF output.
